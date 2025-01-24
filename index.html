@@ -4,22 +4,32 @@
     <title>경로 최적화</title>
     <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=00286ba0bc3bb1e13bcad11a4c86f5ce&libraries=services"></script>
     <style>
-        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
-        #map { width: 100%; height: 400px; margin-top: 20px; }
-        .input-group { margin: 10px 0; }
-        input { width: 80%; padding: 8px; }
-        button { padding: 8px 15px; }
+        .container { display: flex; padding: 20px; gap: 20px; }
+        .map-container { flex: 2; }
+        .control-panel { flex: 1; padding: 20px; background: #f5f5f5; }
+        #map { width: 100%; height: 600px; }
+        .input-group { margin-bottom: 15px; }
+        .address-list { margin: 15px 0; }
+        .address-item { padding: 8px; margin: 5px 0; background: white; }
+        .start-point { background: #e3f2fd; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="input-group">
-            <input type="text" id="address" placeholder="주소 입력">
-            <button onclick="searchAddress()">검색</button>
-            <button onclick="addToList()">경유지 추가</button>
+        <div class="map-container">
+            <div id="map"></div>
         </div>
-        <div id="map"></div>
-        <div id="placesList"></div>
+        <div class="control-panel">
+            <h2>최적 경로 찾기</h2>
+            <div class="input-group">
+                <input type="text" id="address" placeholder="주소 입력">
+                <button onclick="searchAddress()">검색</button>
+                <button onclick="setAsStart()">출발지로 설정</button>
+                <button onclick="addToList()">경유지 추가</button>
+            </div>
+            <div class="address-list" id="addressList"></div>
+            <button onclick="optimizeRoute()">경로 최적화</button>
+        </div>
     </div>
 
     <script>
@@ -30,10 +40,11 @@
         
         var geocoder = new kakao.maps.services.Geocoder();
         var markers = [];
+        var addresses = [];
+        var startPoint = null;
 
         function searchAddress() {
             var address = document.getElementById('address').value;
-            
             geocoder.addressSearch(address, function(result, status) {
                 if (status === kakao.maps.services.Status.OK) {
                     var coords = new kakao.maps.LatLng(result[0].y, result[0].x);
@@ -47,12 +58,46 @@
             });
         }
 
+        function setAsStart() {
+            var address = document.getElementById('address').value;
+            startPoint = address;
+            updateAddressList();
+        }
+
         function addToList() {
             var address = document.getElementById('address').value;
-            var list = document.getElementById('placesList');
-            var item = document.createElement('div');
-            item.textContent = address;
-            list.appendChild(item);
+            if (address && !addresses.includes(address)) {
+                addresses.push(address);
+                updateAddressList();
+            }
+        }
+
+        function updateAddressList() {
+            var list = document.getElementById('addressList');
+            list.innerHTML = '';
+            
+            if (startPoint) {
+                var startItem = document.createElement('div');
+                startItem.className = 'address-item start-point';
+                startItem.textContent = '출발: ' + startPoint;
+                list.appendChild(startItem);
+            }
+
+            addresses.forEach((address, index) => {
+                var item = document.createElement('div');
+                item.className = 'address-item';
+                item.textContent = `경유${index + 1}: ${address}`;
+                list.appendChild(item);
+            });
+        }
+
+        function optimizeRoute() {
+            if (!startPoint || addresses.length < 1) {
+                alert('출발지와 최소 1개 이상의 경유지가 필요합니다.');
+                return;
+            }
+            // 여기에 경로 최적화 로직 추가
+            alert('경로 최적화 기능 구현 예정');
         }
     </script>
 </body>
