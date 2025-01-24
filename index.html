@@ -1,162 +1,260 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>경로 최적화</title>
-    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=00286ba0bc3bb1e13bcad11a4c86f5ce&libraries=services"></script>
-    <style>
-        .container { display: flex; padding: 20px; gap: 20px; }
-        .map-container { flex: 2; }
-        .control-panel { flex: 1; }
-        #map { width: 100%; height: 600px; }
-        .input-group { margin-bottom: 15px; }
-        .suggestions { background: white; border: 1px solid #ddd; }
-        .suggestion-item { padding: 8px; cursor: pointer; }
-        .suggestion-item:hover { background: #f5f5f5; }
-    </style>
+   <title>경로 최적화</title>
+   <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=00286ba0bc3bb1e13bcad11a4c86f5ce&libraries=services"></script>
+   <style>
+       .container { 
+           display: flex; 
+           padding: 20px; 
+           gap: 20px; 
+           max-width: 1200px;
+           margin: 0 auto;
+       }
+       .map-container { flex: 2; }
+       .control-panel { 
+           flex: 1; 
+           background: #fff;
+           border-radius: 12px;
+           padding: 20px;
+           box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+       }
+       #map { 
+           width: 100%; 
+           height: 600px;
+           border-radius: 12px;
+           box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+       }
+       .input-group { margin-bottom: 15px; }
+       .input-box {
+           width: 100%;
+           padding: 10px;
+           border: 2px solid #e5e7eb;
+           border-radius: 8px;
+           margin-bottom: 10px;
+       }
+       .btn {
+           padding: 10px 20px;
+           border: none;
+           border-radius: 8px;
+           cursor: pointer;
+           font-weight: bold;
+           transition: all 0.2s;
+           width: 100%;
+           margin-bottom: 8px;
+       }
+       .btn-start {
+           background: #4F46E5;
+           color: white;
+       }
+       .btn-start:hover { background: #4338CA; }
+       .btn-add {
+           background: #10B981;
+           color: white;
+       }
+       .btn-add:hover { background: #059669; }
+       .btn-optimize {
+           background: #3B82F6;
+           color: white;
+       }
+       .btn-optimize:hover { background: #2563EB; }
+       .suggestions {
+           background: white;
+           border: 1px solid #e5e7eb;
+           border-radius: 8px;
+           overflow: hidden;
+           position: absolute;
+           width: 100%;
+           z-index: 1000;
+       }
+       .suggestion-item {
+           padding: 10px;
+           cursor: pointer;
+           border-bottom: 1px solid #e5e7eb;
+       }
+       .suggestion-item:hover { background: #f3f4f6; }
+       .address-item {
+           padding: 10px;
+           margin: 5px 0;
+           background: #f3f4f6;
+           border-radius: 8px;
+       }
+       .address-item.start { background: #e0e7ff; }
+   </style>
 </head>
 <body>
-    <div class="container">
-        <div class="map-container">
-            <div id="map"></div>
-        </div>
-        <div class="control-panel">
-            <h2>최적 경로 찾기</h2>
-            <div class="input-group">
-                <input type="text" id="address" placeholder="주소 입력" autocomplete="off">
-                <div id="suggestions" class="suggestions"></div>
-                <button onclick="setAsStart()">출발지로 설정</button>
-                <button onclick="addToList()">경유지 추가</button>
-            </div>
-            <div id="addressList"></div>
-            <button onclick="findOptimalRoute()">경로 최적화</button>
-        </div>
-    </div>
+   <div class="container">
+       <div class="map-container">
+           <div id="map"></div>
+       </div>
+       <div class="control-panel">
+           <h2>최적 경로 찾기</h2>
+           <div class="input-group">
+               <input type="text" id="address" class="input-box" placeholder="주소 입력">
+               <div id="suggestions" class="suggestions"></div>
+               <button onclick="setAsStart()" class="btn btn-start">출발지로 설정</button>
+               <button onclick="addToList()" class="btn btn-add">경유지 추가</button>
+           </div>
+           <div id="addressList"></div>
+           <button onclick="findOptimalRoute()" class="btn btn-optimize">경로 최적화</button>
+       </div>
+   </div>
 
-    <script>
-        var map = new kakao.maps.Map(document.getElementById('map'), {
-            center: new kakao.maps.LatLng(37.566826, 126.978656),
-            level: 3
-        });
-        
-        var places = new kakao.maps.services.Places();
-        var geocoder = new kakao.maps.services.Geocoder();
-        var markers = [];
-        var addresses = [];
-        var startPoint = null;
-        
-        // 주소 자동완성
-        document.getElementById('address').addEventListener('input', function(e) {
-            if (!e.target.value.trim()) return;
-            
-            places.keywordSearch(e.target.value, function(result, status) {
-                if (status === kakao.maps.services.Status.OK) {
-                    var suggestions = document.getElementById('suggestions');
-                    suggestions.innerHTML = '';
-                    result.slice(0, 5).forEach(function(place) {
-                        var div = document.createElement('div');
-                        div.className = 'suggestion-item';
-                        div.textContent = place.place_name + ' (' + place.address_name + ')';
-                        div.onclick = function() {
-                            document.getElementById('address').value = place.place_name;
-                            suggestions.innerHTML = '';
-                            showOnMap(place);
-                        };
-                        suggestions.appendChild(div);
-                    });
-                }
-            });
-        });
+   <script>
+       var map = new kakao.maps.Map(document.getElementById('map'), {
+           center: new kakao.maps.LatLng(37.566826, 126.978656),
+           level: 3
+       });
+       
+       var places = new kakao.maps.services.Places();
+       var geocoder = new kakao.maps.services.Geocoder();
+       var markers = [];
+       var addresses = [];
+       var startPoint = null;
+       
+       document.getElementById('address').addEventListener('input', function(e) {
+           if (!e.target.value.trim()) {
+               document.getElementById('suggestions').innerHTML = '';
+               return;
+           }
+           
+           places.keywordSearch(e.target.value, function(result, status) {
+               if (status === kakao.maps.services.Status.OK) {
+                   var suggestions = document.getElementById('suggestions');
+                   suggestions.innerHTML = '';
+                   result.slice(0, 5).forEach(function(place) {
+                       var div = document.createElement('div');
+                       div.className = 'suggestion-item';
+                       div.textContent = place.place_name + ' (' + place.address_name + ')';
+                       div.onclick = function() {
+                           document.getElementById('address').value = place.place_name;
+                           suggestions.innerHTML = '';
+                           showOnMap(place);
+                       };
+                       suggestions.appendChild(div);
+                   });
+               }
+           });
+       });
 
-        function showOnMap(place) {
-            var coords = new kakao.maps.LatLng(place.y, place.x);
-            var marker = new kakao.maps.Marker({
-                map: map,
-                position: coords
-            });
-            markers.push(marker);
-            map.setCenter(coords);
-        }
+       function showOnMap(place) {
+           // 기존 마커 제거
+           markers.forEach(marker => marker.setMap(null));
+           markers = [];
+           
+           var coords = new kakao.maps.LatLng(place.y, place.x);
+           var marker = new kakao.maps.Marker({
+               map: map,
+               position: coords
+           });
+           markers.push(marker);
+           map.setCenter(coords);
+       }
 
-        function findOptimalRoute() {
-            if (!startPoint || addresses.length === 0) {
-                alert('출발지와 최소 1개의 경유지가 필요합니다');
-                return;
-            }
+       function setAsStart() {
+           const addressInput = document.getElementById('address').value;
+           if (addressInput) {
+               startPoint = addressInput;
+               updateDisplay();
+               document.getElementById('address').value = '';
+           }
+       }
 
-            // 거리 계산 및 최적 경로 찾기
-            var allPoints = [startPoint, ...addresses];
-            var distanceMatrix = [];
-            var processed = 0;
-            
-            // 거리 행렬 생성
-            for (let i = 0; i < allPoints.length; i++) {
-                distanceMatrix[i] = [];
-                for (let j = 0; j < allPoints.length; j++) {
-                    if (i === j) {
-                        distanceMatrix[i][j] = 0;
-                        processed++;
-                        continue;
-                    }
-                    
-                    calculateDistance(allPoints[i], allPoints[j], function(distance) {
-                        distanceMatrix[i][j] = distance;
-                        processed++;
-                        
-                        if (processed === allPoints.length * allPoints.length) {
-                            var route = nearestNeighbor(distanceMatrix);
-                            displayRoute(route, allPoints);
-                        }
-                    });
-                }
-            }
-        }
+       function addToList() {
+           const addressInput = document.getElementById('address').value;
+           if (addressInput && !addresses.includes(addressInput)) {
+               addresses.push(addressInput);
+               updateDisplay();
+               document.getElementById('address').value = '';
+           }
+       }
 
-        function calculateDistance(point1, point2, callback) {
-            geocoder.addressSearch(point1, function(result1, status1) {
-                if (status1 === kakao.maps.services.Status.OK) {
-                    geocoder.addressSearch(point2, function(result2, status2) {
-                        if (status2 === kakao.maps.services.Status.OK) {
-                            var coords1 = new kakao.maps.LatLng(result1[0].y, result1[0].x);
-                            var coords2 = new kakao.maps.LatLng(result2[0].y, result2[0].x);
-                            
-                            // 직선 거리 계산
-                            var distance = coords1.getLat() - coords2.getLat();
-                            callback(Math.abs(distance));
-                        }
-                    });
-                }
-            });
-        }
+       function updateDisplay() {
+           const list = document.getElementById('addressList');
+           list.innerHTML = '';
+           
+           if (startPoint) {
+               list.innerHTML += `<div class="address-item start">출발: ${startPoint}</div>`;
+           }
+           
+           addresses.forEach((addr, i) => {
+               list.innerHTML += `<div class="address-item">경유${i+1}: ${addr}</div>`;
+           });
+       }
 
-        function nearestNeighbor(distances) {
-            var n = distances.length;
-            var route = [0]; // 시작점
-            var unvisited = Array.from({length: n-1}, (_, i) => i + 1);
-            
-            while (unvisited.length > 0) {
-                var last = route[route.length - 1];
-                var nearest = unvisited.reduce((min, curr) => 
-                    distances[last][curr] < distances[last][min] ? curr : min
-                , unvisited[0]);
-                
-                route.push(nearest);
-                unvisited = unvisited.filter(x => x !== nearest);
-            }
-            
-            return route;
-        }
+       function findOptimalRoute() {
+           if (!startPoint || addresses.length === 0) {
+               alert('출발지와 최소 1개의 경유지가 필요합니다');
+               return;
+           }
 
-        function displayRoute(route, points) {
-            var routeDisplay = document.createElement('div');
-            routeDisplay.innerHTML = '<h3>최적 경로:</h3>';
-            route.forEach((index, i) => {
-                routeDisplay.innerHTML += `${i+1}. ${points[index]}<br>`;
-            });
-            document.getElementById('addressList').appendChild(routeDisplay);
-        }
+           var allPoints = [startPoint, ...addresses];
+           var distanceMatrix = [];
+           var processed = 0;
+           
+           for (let i = 0; i < allPoints.length; i++) {
+               distanceMatrix[i] = [];
+               for (let j = 0; j < allPoints.length; j++) {
+                   if (i === j) {
+                       distanceMatrix[i][j] = 0;
+                       processed++;
+                       continue;
+                   }
+                   
+                   calculateDistance(allPoints[i], allPoints[j], function(distance) {
+                       distanceMatrix[i][j] = distance;
+                       processed++;
+                       
+                       if (processed === allPoints.length * allPoints.length) {
+                           var route = nearestNeighbor(distanceMatrix);
+                           displayRoute(route, allPoints);
+                       }
+                   });
+               }
+           }
+       }
 
-        // 나머지 기존 함수들...
-        
-    </script>
+       function calculateDistance(point1, point2, callback) {
+           geocoder.addressSearch(point1, function(result1, status1) {
+               if (status1 === kakao.maps.services.Status.OK) {
+                   geocoder.addressSearch(point2, function(result2, status2) {
+                       if (status2 === kakao.maps.services.Status.OK) {
+                           var coords1 = new kakao.maps.LatLng(result1[0].y, result1[0].x);
+                           var coords2 = new kakao.maps.LatLng(result2[0].y, result2[0].x);
+                           var distance = coords1.getLat() - coords2.getLat();
+                           callback(Math.abs(distance));
+                       }
+                   });
+               }
+           });
+       }
+
+       function nearestNeighbor(distances) {
+           var n = distances.length;
+           var route = [0];
+           var unvisited = Array.from({length: n-1}, (_, i) => i + 1);
+           
+           while (unvisited.length > 0) {
+               var last = route[route.length - 1];
+               var nearest = unvisited.reduce((min, curr) => 
+                   distances[last][curr] < distances[last][min] ? curr : min
+               , unvisited[0]);
+               
+               route.push(nearest);
+               unvisited = unvisited.filter(x => x !== nearest);
+           }
+           
+           return route;
+       }
+
+       function displayRoute(route, points) {
+           var routeDisplay = document.createElement('div');
+           routeDisplay.innerHTML = '<h3>최적 경로:</h3>';
+           route.forEach((index, i) => {
+               routeDisplay.innerHTML += `<div class="address-item">${i+1}. ${points[index]}</div>`;
+           });
+           document.getElementById('addressList').appendChild(routeDisplay);
+       }
+   </script>
 </body>
 </html>
