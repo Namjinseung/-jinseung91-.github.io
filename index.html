@@ -119,25 +119,6 @@
            cursor: pointer;
            padding: 0 5px;
        }
-       .route-info {
-           background: #f8f9fa;
-           padding: 15px;
-           margin-top: 15px;
-           border-radius: 8px;
-           font-size: 14px;
-       }
-       .route-distance {
-           color: #2563eb;
-           font-weight: bold;
-       }
-       .route-time {
-           color: #059669;
-           font-weight: bold;
-       }
-       h2 {
-           margin-bottom: 20px;
-           color: #1f2937;
-       }
    </style>
 </head>
 <body>
@@ -163,8 +144,188 @@
    </div>
 
    <script>
-   // JavaScript 코드는 이전과 동일
-   // 스타일만 변경했으므로 기존 JavaScript 코드를 그대로 사용
+       var mapContainer = document.getElementById('map');
+       var mapOption = {
+           center: new kakao.maps.LatLng(37.566826, 126.978656),
+           level: 3
+       };
+       
+       var map = new kakao.maps.Map(mapContainer, mapOption);
+       var places = new kakao.maps.services.Places();
+       var geocoder = new kakao.maps.services.Geocoder();
+       var markers = [];
+       var polylines = [];
+       var addresses = [];
+       var startPoint = null;
+       var destination = null;
+       
+       document.getElementById('address').addEventListener('input', function(e) {
+           if (!e.target.value.trim()) {
+               document.getElementById('suggestions').innerHTML = '';
+               return;
+           }
+           
+           places.keywordSearch(e.target.value, function(result, status) {
+               if (status === kakao.maps.services.Status.OK) {
+                   var suggestions = document.getElementById('suggestions');
+                   suggestions.innerHTML = '';
+                   result.slice(0, 5).forEach(function(place) {
+                       var div = document.createElement('div');
+                       div.className = 'suggestion-item';
+                       div.textContent = place.place_name + ' (' + place.address_name + ')';
+                       div.onclick = function() {
+                           document.getElementById('address').value = place.place_name;
+                           suggestions.innerHTML = '';
+                           showOnMap(place);
+                       };
+                       suggestions.appendChild(div);
+                   });
+               }
+           });
+       });
+
+       function showOnMap(place) {
+           clearMap();
+           
+           var coords = new kakao.maps.LatLng(place.y, place.x);
+           var marker = new kakao.maps.Marker({
+               map: map,
+               position: coords
+           });
+           markers.push(marker);
+           map.setCenter(coords);
+       }
+
+       function clearMap() {
+           markers.forEach(marker => marker.setMap(null));
+           markers = [];
+           polylines.forEach(line => line.setMap(null));
+           polylines = [];
+       }
+
+       function setAsStart() {
+           const addressInput = document.getElementById('address').value;
+           if (addressInput) {
+               startPoint = addressInput;
+               updateDisplay();
+               document.getElementById('address').value = '';
+           }
+       }
+
+       function setAsDestination() {
+           const addressInput = document.getElementById('address').value;
+           if (addressInput) {
+               destination = addressInput;
+               updateDisplay();
+               document.getElementById('address').value = '';
+           }
+       }
+
+       function addToList() {
+           const addressInput = document.getElementById('address').value;
+           if (addressInput && !addresses.includes(addressInput)) {
+               addresses.push(addressInput);
+               updateDisplay();
+               document.getElementById('address').value = '';
+           }
+       }
+
+       function removeStart() {
+           startPoint = null;
+           updateDisplay();
+       }
+
+       function removeAddress(index) {
+           addresses.splice(index, 1);
+           updateDisplay();
+       }
+
+       function removeDestination() {
+           destination = null;
+           updateDisplay();
+       }
+
+       function updateDisplay() {
+           const list = document.getElementById('addressList');
+           list.innerHTML = '';
+           
+           if (startPoint) {
+               list.innerHTML += `
+                   <div class="address-item start">
+                       <span>출발: ${startPoint}</span>
+                       <button onclick="removeStart()" class="btn-delete">×</button>
+                   </div>`;
+           }
+           
+           addresses.forEach((addr, i) => {
+               list.innerHTML += `
+                   <div class="address-item">
+                       <span>경유${i+1}: ${addr}</span>
+                       <button onclick="removeAddress(${i})" class="btn-delete">×</button>
+                   </div>`;
+           });
+
+           if (destination) {
+               list.innerHTML += `
+                   <div class="address-item destination">
+                       <span>도착: ${destination}</span>
+                       <button onclick="removeDestination()" class="btn-delete">×</button>
+                   </div>`;
+           }
+       }
+
+       function findOptimalRoute() {
+           if (!startPoint || (!addresses.length && !destination)) {
+               alert('출발지와 최소 1개의 경유지 또는 도착지가 필요합니다');
+               return;
+           }
+
+           clearMap();
+           const bounds = new kakao.maps.LatLngBounds();
+           const points = [startPoint, ...addresses];
+           if (destination) points.push(destination);
+
+           const promises = points.map(point => 
+               new Promise((resolve, reject) => {
+                   geocoder.addressSearch(point, (result, status) => {
+                       if (status === kakao.maps.services.Status.OK) {
+                           resolve(new kakao.maps.LatLng(result[0].y, result[0].x));
+                       } else {
+                           reject(new Error(`주소 변환 실패: ${point}`));
+                       }
+                   });
+               })
+           );
+
+           Promise.all(promises)
+               .then(coords => {
+                   // 마커 표시
+                   coords.forEach(coord => {
+                       const marker = new kakao.maps.Marker({
+                           position: coord,
+                           map: map
+                       });
+                       markers.push(marker);
+                       bounds.extend(coord);
+                   });
+
+                   // 경로 선 그리기
+                   const polyline = new kakao.maps.Polyline({
+                       path: coords,
+                       strokeWeight: 5,
+                       strokeColor: '#FF0000',
+                       strokeOpacity: 0.7
+                   });
+                   polyline.setMap(map);
+                   polylines.push(polyline);
+
+                   map.setBounds(bounds);
+               })
+               .catch(error => {
+                   alert('경로 계산 중 오류가 발생했습니다.');
+                   console.error(error);
+               });
+       }
    </script>
 </body>
 </html>
