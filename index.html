@@ -2,7 +2,7 @@
 <html>
 <head>
    <title>경로 최적화</title>
-   <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=00286ba0bc3bb1e13bcad11a4c86f5ce&libraries=services"></script>
+   <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=00286ba0bc3bb1e13bcad11a4c86f5ce&libraries=services,clusterer,drawing"></script>
    <style>
        .container { 
            display: flex; 
@@ -130,6 +130,7 @@
        var places = new kakao.maps.services.Places();
        var geocoder = new kakao.maps.services.Geocoder();
        var markers = [];
+       var polylines = [];
        var addresses = [];
        var startPoint = null;
        var destination = null;
@@ -160,8 +161,7 @@
        });
 
        function showOnMap(place) {
-           markers.forEach(marker => marker.setMap(null));
-           markers = [];
+           clearMap();
            
            var coords = new kakao.maps.LatLng(place.y, place.x);
            var marker = new kakao.maps.Marker({
@@ -170,6 +170,13 @@
            });
            markers.push(marker);
            map.setCenter(coords);
+       }
+
+       function clearMap() {
+           markers.forEach(marker => marker.setMap(null));
+           markers = [];
+           polylines.forEach(line => line.setMap(null));
+           polylines = [];
        }
 
        function setAsStart() {
@@ -243,56 +250,59 @@
            }
        }
 
-       function findOptimalRoute() {
+       async function findOptimalRoute() {
            if (!startPoint || (!addresses.length && !destination)) {
                alert('출발지와 최소 1개의 경유지 또는 도착지가 필요합니다');
                return;
            }
 
-           // 기존 마커와 경로 삭제
-           markers.forEach(marker => marker.setMap(null));
-           markers = [];
+           clearMap();
+           const bounds = new kakao.maps.LatLngBounds();
+           const points = [startPoint, ...addresses];
+           if (destination) points.push(destination);
 
-           var allPoints = [startPoint, ...addresses];
-           if (destination) allPoints.push(destination);
-
-           var linePath = [];
-           var bounds = new kakao.maps.LatLngBounds();
-           
-           // 각 지점의 좌표 얻기
-           allPoints.forEach((point, i) => {
-               geocoder.addressSearch(point, function(result, status) {
-                   if (status === kakao.maps.services.Status.OK) {
-                       var coords = new kakao.maps.LatLng(result[0].y, result[0].x);
-                       linePath.push(coords);
-                       bounds.extend(coords);
-
-                       // 마커 생성
-                       var marker = new kakao.maps.Marker({
-                           map: map,
-                           position: coords
+           try {
+               // 모든 주소를 좌표로 변환
+               const coords = await Promise.all(points.map(point => {
+                   return new Promise((resolve, reject) => {
+                       geocoder.addressSearch(point, (result, status) => {
+                           if (status === kakao.maps.services.Status.OK) {
+                               resolve(new kakao.maps.LatLng(result[0].y, result[0].x));
+                           } else {
+                               reject(new Error(`주소 변환 실패: ${point}`));
+                           }
                        });
-                       markers.push(marker);
+                   });
+               }));
 
-                       // 모든 포인트가 준비되면 경로 표시
-                       if (linePath.length === allPoints.length) {
-                           // 경로 그리기
-                           var polyline = new kakao.maps.Polyline({
-                               path: linePath,
-                               strokeWeight: 5,
-                               strokeColor: '#FF0000',
-                               strokeOpacity: 0.7
-                           });
-                           
-                           polyline.setMap(map);
-                           map.setBounds(bounds);
-
-                           // 경로 결과 표시
-                           displayRouteResult(allPoints);
-                       }
-                   }
+               // 마커 표시
+               coords.forEach((coord, i) => {
+                   const marker = new kakao.maps.Marker({
+                       position: coord,
+                       map: map
+                   });
+                   markers.push(marker);
+                   bounds.extend(coord);
                });
-           });
+
+               // 경로 표시
+               const polyline = new kakao.maps.Polyline({
+                   path: coords,
+                   strokeWeight: 5,
+                   strokeColor: '#FF0000',
+                   strokeOpacity: 0.7
+               });
+               polyline.setMap(map);
+               polylines.push(polyline);
+
+               map.setBounds(bounds);
+
+               // 경로 결과 표시
+               displayRouteResult(points);
+           } catch (error) {
+               alert('경로 계산 중 오류가 발생했습니다.');
+               console.error(error);
+           }
        }
 
        function displayRouteResult(points) {
