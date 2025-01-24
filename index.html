@@ -53,9 +53,15 @@
            color: white;
        }
        .btn-add:hover { background: #059669; }
+       .btn-destination {
+           background: #EF4444;
+           color: white;
+       }
+       .btn-destination:hover { background: #DC2626; }
        .btn-optimize {
            background: #3B82F6;
            color: white;
+           margin-top: 20px;
        }
        .btn-optimize:hover { background: #2563EB; }
        .suggestions {
@@ -78,8 +84,21 @@
            margin: 5px 0;
            background: #f3f4f6;
            border-radius: 8px;
+           display: flex;
+           justify-content: space-between;
+           align-items: center;
        }
        .address-item.start { background: #e0e7ff; }
+       .address-item.destination { background: #fee2e2; }
+       .btn-delete {
+           background: none;
+           border: none;
+           color: #EF4444;
+           font-size: 20px;
+           cursor: pointer;
+           padding: 0 5px;
+       }
+       .btn-delete:hover { color: #DC2626; }
    </style>
 </head>
 <body>
@@ -94,9 +113,11 @@
                <div id="suggestions" class="suggestions"></div>
                <button onclick="setAsStart()" class="btn btn-start">출발지로 설정</button>
                <button onclick="addToList()" class="btn btn-add">경유지 추가</button>
+               <button onclick="setAsDestination()" class="btn btn-destination">도착지로 설정</button>
            </div>
            <div id="addressList"></div>
            <button onclick="findOptimalRoute()" class="btn btn-optimize">경로 최적화</button>
+           <div id="routeResult"></div>
        </div>
    </div>
 
@@ -111,6 +132,7 @@
        var markers = [];
        var addresses = [];
        var startPoint = null;
+       var destination = null;
        
        document.getElementById('address').addEventListener('input', function(e) {
            if (!e.target.value.trim()) {
@@ -138,7 +160,6 @@
        });
 
        function showOnMap(place) {
-           // 기존 마커 제거
            markers.forEach(marker => marker.setMap(null));
            markers = [];
            
@@ -160,6 +181,15 @@
            }
        }
 
+       function setAsDestination() {
+           const addressInput = document.getElementById('address').value;
+           if (addressInput) {
+               destination = addressInput;
+               updateDisplay();
+               document.getElementById('address').value = '';
+           }
+       }
+
        function addToList() {
            const addressInput = document.getElementById('address').value;
            if (addressInput && !addresses.includes(addressInput)) {
@@ -169,91 +199,113 @@
            }
        }
 
+       function removeStart() {
+           startPoint = null;
+           updateDisplay();
+       }
+
+       function removeAddress(index) {
+           addresses.splice(index, 1);
+           updateDisplay();
+       }
+
+       function removeDestination() {
+           destination = null;
+           updateDisplay();
+       }
+
        function updateDisplay() {
            const list = document.getElementById('addressList');
            list.innerHTML = '';
            
            if (startPoint) {
-               list.innerHTML += `<div class="address-item start">출발: ${startPoint}</div>`;
+               list.innerHTML += `
+                   <div class="address-item start">
+                       <span>출발: ${startPoint}</span>
+                       <button onclick="removeStart()" class="btn-delete">×</button>
+                   </div>`;
            }
            
            addresses.forEach((addr, i) => {
-               list.innerHTML += `<div class="address-item">경유${i+1}: ${addr}</div>`;
+               list.innerHTML += `
+                   <div class="address-item">
+                       <span>경유${i+1}: ${addr}</span>
+                       <button onclick="removeAddress(${i})" class="btn-delete">×</button>
+                   </div>`;
            });
+
+           if (destination) {
+               list.innerHTML += `
+                   <div class="address-item destination">
+                       <span>도착: ${destination}</span>
+                       <button onclick="removeDestination()" class="btn-delete">×</button>
+                   </div>`;
+           }
        }
 
        function findOptimalRoute() {
-           if (!startPoint || addresses.length === 0) {
-               alert('출발지와 최소 1개의 경유지가 필요합니다');
+           if (!startPoint || (!addresses.length && !destination)) {
+               alert('출발지와 최소 1개의 경유지 또는 도착지가 필요합니다');
                return;
            }
 
+           // 기존 마커와 경로 삭제
+           markers.forEach(marker => marker.setMap(null));
+           markers = [];
+
            var allPoints = [startPoint, ...addresses];
-           var distanceMatrix = [];
-           var processed = 0;
+           if (destination) allPoints.push(destination);
+
+           var linePath = [];
+           var bounds = new kakao.maps.LatLngBounds();
            
-           for (let i = 0; i < allPoints.length; i++) {
-               distanceMatrix[i] = [];
-               for (let j = 0; j < allPoints.length; j++) {
-                   if (i === j) {
-                       distanceMatrix[i][j] = 0;
-                       processed++;
-                       continue;
+           // 각 지점의 좌표 얻기
+           allPoints.forEach((point, i) => {
+               geocoder.addressSearch(point, function(result, status) {
+                   if (status === kakao.maps.services.Status.OK) {
+                       var coords = new kakao.maps.LatLng(result[0].y, result[0].x);
+                       linePath.push(coords);
+                       bounds.extend(coords);
+
+                       // 마커 생성
+                       var marker = new kakao.maps.Marker({
+                           map: map,
+                           position: coords
+                       });
+                       markers.push(marker);
+
+                       // 모든 포인트가 준비되면 경로 표시
+                       if (linePath.length === allPoints.length) {
+                           // 경로 그리기
+                           var polyline = new kakao.maps.Polyline({
+                               path: linePath,
+                               strokeWeight: 5,
+                               strokeColor: '#FF0000',
+                               strokeOpacity: 0.7
+                           });
+                           
+                           polyline.setMap(map);
+                           map.setBounds(bounds);
+
+                           // 경로 결과 표시
+                           displayRouteResult(allPoints);
+                       }
                    }
-                   
-                   calculateDistance(allPoints[i], allPoints[j], function(distance) {
-                       distanceMatrix[i][j] = distance;
-                       processed++;
-                       
-                       if (processed === allPoints.length * allPoints.length) {
-                           var route = nearestNeighbor(distanceMatrix);
-                           displayRoute(route, allPoints);
-                       }
-                   });
-               }
-           }
-       }
-
-       function calculateDistance(point1, point2, callback) {
-           geocoder.addressSearch(point1, function(result1, status1) {
-               if (status1 === kakao.maps.services.Status.OK) {
-                   geocoder.addressSearch(point2, function(result2, status2) {
-                       if (status2 === kakao.maps.services.Status.OK) {
-                           var coords1 = new kakao.maps.LatLng(result1[0].y, result1[0].x);
-                           var coords2 = new kakao.maps.LatLng(result2[0].y, result2[0].x);
-                           var distance = coords1.getLat() - coords2.getLat();
-                           callback(Math.abs(distance));
-                       }
-                   });
-               }
+               });
            });
        }
 
-       function nearestNeighbor(distances) {
-           var n = distances.length;
-           var route = [0];
-           var unvisited = Array.from({length: n-1}, (_, i) => i + 1);
-           
-           while (unvisited.length > 0) {
-               var last = route[route.length - 1];
-               var nearest = unvisited.reduce((min, curr) => 
-                   distances[last][curr] < distances[last][min] ? curr : min
-               , unvisited[0]);
-               
-               route.push(nearest);
-               unvisited = unvisited.filter(x => x !== nearest);
-           }
-           
-           return route;
-       }
-
-       function displayRoute(route, points) {
-           var routeDisplay = document.createElement('div');
-           routeDisplay.innerHTML = '<h3>최적 경로:</h3>';
-           route.forEach((index, i) => {
-               routeDisplay.innerHTML += `<div class="address-item">${i+1}. ${points[index]}</div>`;
+       function displayRouteResult(points) {
+           const resultDiv = document.getElementById('routeResult');
+           resultDiv.innerHTML = '<h3>최적 경로:</h3>';
+           points.forEach((point, i) => {
+               const className = i === 0 ? 'start' : 
+                               i === points.length - 1 && destination ? 'destination' : '';
+               resultDiv.innerHTML += `
+                   <div class="address-item ${className}">
+                       ${i + 1}. ${point}
+                   </div>`;
            });
-           document.getElementById('addressList').appendChild(routeDisplay);
        }
    </script>
 </body>
